@@ -38,12 +38,17 @@ jobs:
           echo "source.url=https://github.com/${{ github.repository }}" >> local.properties
 
       # "<upstream version>.<run>": rises with every build, so each APK installs as an update and the
-      # updater (which compares the numbers before any "-suffix") sees a newer release
+      # updater (which compares the numbers before any "-suffix") sees a newer release. Only this
+      # checkout's copy of libs.versions.toml changes; nothing is committed.
       - name: Set the version
         run: |
           base=$(sed -n 's/^versionName = "\(.*\)"/\1/p' gradle/libs.versions.toml)
-          echo "VERSION_NAME=$base.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
-          echo "VERSION_CODE=$((GITHUB_RUN_NUMBER + 1000))" >> "$GITHUB_ENV"
+          VERSION_NAME="$base.$GITHUB_RUN_NUMBER"
+          VERSION_CODE=$((GITHUB_RUN_NUMBER + 1000))
+          sed -i "s/^versionName = .*/versionName = \"$VERSION_NAME\"/; s/^versionCode = .*/versionCode = \"$VERSION_CODE\"/" gradle/libs.versions.toml
+          grep -E '^version(Name|Code) =' gradle/libs.versions.toml
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
 
       # Every runner would otherwise make its own random debug key, and Android only installs an
       # update signed with the same key as the installed app
@@ -65,12 +70,10 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon
 
-      # Version and key go in as Android Studio's injected properties, so build.gradle.kts stays as upstream has it
+      # The key goes in as Android Studio's injected signing properties, so build.gradle.kts stays as upstream has it
       - name: Build Sofadrop Dev
         run: |
           ./gradlew :app:assembleDebug --no-daemon \
-            -Pandroid.injected.version.code="$VERSION_CODE" \
-            -Pandroid.injected.version.name="$VERSION_NAME" \
             -Pandroid.injected.signing.store.file="$RUNNER_TEMP/debug.keystore" \
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
