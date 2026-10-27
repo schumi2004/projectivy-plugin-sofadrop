@@ -18,7 +18,7 @@ class SettingsBackupTest {
     )
 
     private val choices = mapOf(
-        "language" to "nl-NL",
+        "language" to "en-US",
         "titles_per_list" to 20,
         "global_hits_only" to true,
         "lists" to setOf("tmdb:trending_movies", "trakt:watchlist_movies"),
