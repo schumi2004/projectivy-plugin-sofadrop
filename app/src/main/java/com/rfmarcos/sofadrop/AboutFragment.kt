@@ -17,9 +17,9 @@ class AboutFragment : BaseSettingsFragment() {
     )
 
     override fun onCreateActions(actions: MutableList<GuidedAction>, savedInstanceState: Bundle?) {
-        // With a repository to update from, pressing the version checks for updates right away
+        // Where updates are possible, pressing the version checks for one right away
         actions += action(ID_VERSION, R.drawable.ic_act_status, getString(R.string.about_version), versionText())
-            .focusable(Updater.repo() != null).build()
+            .focusable(Updater.canCheck).build()
         actions += action(ID_USE_IN_PROJECTIVY, R.drawable.ic_act_tv, getString(R.string.use_in_projectivy_title),
             getString(R.string.use_in_projectivy_desc)).multilineDescription(true).build()
         if (BuildConfig.SUPPORT_URL.isNotBlank()) {
@@ -45,7 +45,7 @@ class AboutFragment : BaseSettingsFragment() {
 
     private fun versionText(): String = when {
         Updater.available -> getString(R.string.about_version_update, BuildConfig.VERSION_NAME, Settings.updateVersion)
-        Updater.repo() != null -> getString(R.string.about_version_check, BuildConfig.VERSION_NAME)
+        Updater.canCheck -> getString(R.string.about_version_check, BuildConfig.VERSION_NAME)
         else -> BuildConfig.VERSION_NAME
     }
 

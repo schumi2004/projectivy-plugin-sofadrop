@@ -33,6 +33,9 @@ object Updater {
     fun repo(): String? =
         Regex("github\\.com/([^/]+/[^/#?]+)").find(BuildConfig.SOURCE_URL)?.groupValues?.get(1)?.removeSuffix(".git")
 
+    /** True when this build looks for updates: it has a repository (the Dev build takes "-dev" releases). */
+    val canCheck: Boolean get() = repo() != null
+
     /** True when the last check found a release newer than this build. */
     val available: Boolean get() = isNewer(Settings.updateVersion, BuildConfig.VERSION_NAME) && Settings.updateApkUrl.isNotBlank()
 
