@@ -9,7 +9,8 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -49,24 +50,36 @@ object Updater {
 
     /** Look for a newer release, at most every 12 hours unless [force]; network errors are only logged. */
     fun check(force: Boolean = false) {
-        // The Dev build must not offer to "update" itself to the release
-        val repo = repo()?.takeUnless { BuildConfig.DEBUG } ?: return
+        val repo = repo() ?: return
         if (!force && System.currentTimeMillis() - Settings.updateCheckedAt < CHECK_EVERY) return
         try {
-            val request = Request.Builder().url("https://api.github.com/repos/$repo/releases/latest")
+            val request = Request.Builder().url("https://api.github.com/repos/$repo/releases?per_page=30")
                 .header("Accept", "application/vnd.github+json").build()
-            val release = http.newCall(request).execute().use { response ->
+            val releases = http.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-                Json.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
+                Json.parseToJsonElement(response.body?.string().orEmpty()).jsonArray.filterIsInstance<JsonObject>()
             }
-            val apk = release.objects("assets").firstOrNull { it.str("name")?.endsWith(".apk") == true }
-            Settings.updateVersion = release.str("tag_name").orEmpty().removePrefix("v")
+            val release = newest(releases, dev = BuildConfig.DEBUG)
+            val apk = release?.objects("assets")?.firstOrNull { it.str("name")?.endsWith(".apk") == true }
+            Settings.updateVersion = release?.str("tag_name").orEmpty().removePrefix("v")
             Settings.updateApkUrl = apk?.str("browser_download_url").orEmpty()
             Settings.updateCheckedAt = System.currentTimeMillis()
         } catch (e: Exception) {
             Log.w(TAG, "Update check failed", e)
         }
     }
+
+    /**
+     * Newest published release for this build: the Dev build only takes "-dev" tags (it can't install
+     * the regular app over itself), the regular app only takes final releases.
+     */
+    fun newest(releases: List<JsonObject>, dev: Boolean): JsonObject? = releases
+        .filter { it.bool("draft") != true }
+        .filter { release ->
+            val isDev = release.str("tag_name").orEmpty().endsWith("-dev")
+            if (dev) isDev else !isDev && release.bool("prerelease") != true
+        }
+        .reduceOrNull { best, release -> if (isNewer(release.str("tag_name").orEmpty(), best.str("tag_name").orEmpty())) release else best }
 
     /**
      * Download the new APK and start the system installer (blocking: call it off the main thread).

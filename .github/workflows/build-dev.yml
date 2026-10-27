@@ -112,5 +112,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/*.apk sofadrop.apk
-          gh release create "v$VERSION_NAME-dev" sofadrop.apk --target "$GITHUB_SHA" \
+          # A prerelease, so GitHub's "latest release" (and the regular app's updater) never points at it
+          gh release create "v$VERSION_NAME-dev" sofadrop.apk --target "$GITHUB_SHA" --prerelease \
             --title "Sofadrop Dev $VERSION_NAME" --notes "Dev build $VERSION_NAME from ${GITHUB_SHA::7}"
