@@ -1,5 +1,5 @@
 # Fork-only: builds "Sofadrop Dev" (the debug build, com.rfmarcos.sofadrop.dev) from this dev branch,
-# which installs next to the regular app, and publishes it as a GitHub release for the in-app updater.
+# which installs next to the regular app, and publishes every push as a GitHub prerelease for the in-app updater.
 # Everything fork-specific lives in this file, so branches made from main stay clean for upstream PRs.
 name: Build Sofadrop Dev
 
@@ -7,6 +7,8 @@ on:
   push:
     branches:
       - dev
+  # GitHub only offers "Run workflow" for workflows on the default branch (main, kept clean for
+  # upstream), so pushes to dev publish on their own; this stays for the API
   workflow_dispatch:
     inputs:
       release:
@@ -107,7 +109,7 @@ jobs:
           retention-days: 14
 
       - name: Publish the release
-        if: inputs.release
+        if: github.event_name == 'push' || inputs.release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
