@@ -376,6 +376,21 @@ class SofascreenService : DreamService() {
     override fun onDreamingStarted() {
         super.onDreamingStarted()
         view?.start()
+        askForMissingCopies()
+    }
+
+    /**
+     * Running as the screensaver while the set has no copies of its own (Sofascreen was chosen after the
+     * last update, or Android didn't say it was): make the set again with them, at most every few hours.
+     */
+    private fun askForMissingCopies() {
+        if (!Settings.screensaverDiffers || Settings.generating) return
+        val set = WallpaperStore(this).current()
+        if (set.isEmpty() || set.all { it.screensaverFile.isNotEmpty() }) return
+        val now = System.currentTimeMillis()
+        if (now - Settings.screensaverCopiesAskedAt < COPIES_RETRY_MILLIS) return
+        Settings.screensaverCopiesAskedAt = now
+        GenerateWallpapersWorker.runNow(this, screensaver = true)
     }
 
     override fun onDreamingStopped() {
@@ -384,6 +399,8 @@ class SofascreenService : DreamService() {
     }
 
     companion object {
+        private const val COPIES_RETRY_MILLIS = 6 * 3_600_000L
+
         /**
          * False only when Android says another screensaver (or none) is chosen; true when it doesn't
          * say (a TV that hides the setting): then the screensaver's copies are drawn anyway.

@@ -13,6 +13,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import tv.projectivy.plugin.wallpaperprovider.api.WallpaperProviderContract
 import java.io.File
 import java.io.FileOutputStream
@@ -22,7 +23,9 @@ import java.util.concurrent.TimeUnit
 class GenerateWallpapersWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
 
     /** Draw the screensaver's copies in this generation (see [Settings.screensaverDiffers]). */
-    private val screensaverCopies by lazy { Settings.screensaverDiffers && SofascreenService.isChosen(applicationContext) }
+    private val screensaverCopies by lazy {
+        Settings.screensaverDiffers && (inputData.getBoolean(INPUT_SCREENSAVER, false) || SofascreenService.isChosen(applicationContext))
+    }
 
     override fun doWork(): Result {
         Settings.init(applicationContext)
@@ -133,6 +136,8 @@ class GenerateWallpapersWorker(context: Context, params: WorkerParameters) : Wor
         private const val TAG = "GenerateWallpapers"
         private const val JPEG_QUALITY = 90
         private const val UNIQUE_NOW = "generate-now"
+        /** Asked by the running screensaver: draw its copies even when Android doesn't say it is chosen. */
+        private const val INPUT_SCREENSAVER = "screensaver"
         private const val UNIQUE_PERIODIC = "generate-periodic"
         private const val PROJECTIVY_PACKAGE = "com.spocky.projengmenu"
 
@@ -141,10 +146,11 @@ class GenerateWallpapersWorker(context: Context, params: WorkerParameters) : Wor
             .build()
 
         /** Generate as soon as possible. [replace] restarts a generation already running. */
-        fun runNow(context: Context, replace: Boolean = false) {
+        fun runNow(context: Context, replace: Boolean = false, screensaver: Boolean = false) {
             Settings.init(context)
             Settings.generating = true
             val request = OneTimeWorkRequestBuilder<GenerateWallpapersWorker>()
+                .setInputData(workDataOf(INPUT_SCREENSAVER to screensaver))
                 .setConstraints(networkConstraint)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(

@@ -169,6 +169,7 @@ object Settings {
     private const val KEY_PROJECTIVY_ASKED = "_projectivy_asked_at"
     private const val KEY_UPDATE_APK = "_update_apk"
     private const val KEY_UPDATE_CHECKED = "_update_checked_at"
+    private const val KEY_SCREENSAVER_COPIES_ASKED = "_screensaver_copies_asked_at"
     private const val KEY_TRAKT_ACCESS = "_trakt_access_token"
     private const val KEY_TRAKT_REFRESH = "_trakt_refresh_token"
     private const val KEY_TRAKT_EXPIRES = "_trakt_expires_at"
@@ -776,6 +777,11 @@ object Settings {
     var lastError: String
         get() = preferences.getString(KEY_LAST_ERROR, "") ?: ""
         set(value) = preferences.edit { putString(KEY_LAST_ERROR, value) }
+
+    /** When Sofascreen last asked for its missing copies (see SofascreenService), so it doesn't ask at every start. */
+    var screensaverCopiesAskedAt: Long
+        get() = preferences.getLong(KEY_SCREENSAVER_COPIES_ASKED, 0)
+        set(value) = preferences.edit { putLong(KEY_SCREENSAVER_COPIES_ASKED, value) }
 
     var generating: Boolean
         get() = preferences.getBoolean(KEY_GENERATING, false)
