@@ -24,21 +24,19 @@ vergelijkbaars of de code is veranderd, **waarschijnlijk al gedaan** = lijkt ups
   conflict (zie de merge in `dev`).
 - [x] **Updater** — `pr/update-check`.
 
-## Volgende PR's, in deze volgorde
+- [x] **Selectie: dubbelen en aanvullen tot de gekozen aantallen** — `pr/selection`. Dubbelen en
+  verborgen bekeken titels binnen de pool van de lijst; een titel pas "genomen" als hij gemaakt is;
+  korte lijst verder inlezen (tot 200); aanvullen uit de andere lijsten; `SelectionTest`.
+  (5708cbe, ccbd3fe, f14dbf9, 562924e, d4fcbdb)
+- [x] **Minimale rating** — `pr/min-rating`. Standaardfilter voor automatische lijsten en per lijst;
+  titels met minder dan 20 stemmen blijven staan. (3f136e8)
+- [x] **Blocklist** — `pr/blocklist`. Per titel vanaf de pagina van een lijst, ▼ in Wallpapers
+  bekijken met label GEBLOKKEERD, lijst met geblokkeerde titels (deblokkeren, alles wissen), in de
+  signature. (19aaa33, 59ad44c, 13627ae)
 
-1. [ ] **Selectie: dubbelen en aanvullen tot de gekozen aantallen.** Eerst, omdat de filter-PR's
-   hierop leunen (een filter dat titels weghaalt moet de lijst niet leeg laten).
-   - Dubbelen binnen de marge-pool: titels die een eerdere lijst al nam tellen mee in dezelfde pool
-     als de filters; filters gaan vóór DUPLICATE; geen extra TMDB-details zonder filter; een mislukte
-     titel telt niet als genomen. (5708cbe, ccbd3fe) — *controleren, upstream heeft `takeIncluded` nog*
-   - Korte lijst verder inlezen (tot 200 titels) als er na filters/dubbelen te weinig over is. (f14dbf9)
-   - Aanvullen uit andere lijsten tot titels per lijst × lijsten, om de beurt. (562924e, alleen de worker)
-   - Unit-tests voor de selectie (`SelectionTest`, `TmdbCatalog.select/fetchCount/grow`). (d4fcbdb, f14dbf9)
-2. [ ] **Minimale rating**, als eigen PR. (3f136e8) — *controleren: upstream gebruikt `minRating`
-   mogelijk alleen voor de weergave van ratings*
-3. [ ] **Blocklist**, als eigen PR: per titel vanaf de pagina van een lijst (19aaa33), blokkeren vanuit
-   Wallpapers bekijken (▼) met label GEBLOKKEERD (59ad44c), lijst met geblokkeerde titels met namen en
-   per titel deblokkeren (13627ae). Wijzigingen moeten in de signature (59ad44c).
+De drie filter-PR's gaan uit van `main` en raken dezelfde regels (filtercheck in `TmdbCatalog`,
+`Exclusion`, ID's in de filterschermen, eind van `strings.xml`): na het mergen van één krijgen de
+andere kleine conflicten (opgelost in `dev`).
 
 ## Geparkeerd
 
