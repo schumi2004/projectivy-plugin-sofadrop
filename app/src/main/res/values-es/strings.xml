@@ -454,4 +454,8 @@
     <string name="clock_format_system">Como Android (%1$s)</string>
     <string name="clock_format_24">24 horas</string>
     <string name="clock_format_12">12 horas</string>
+    <string name="filters_age_from_year">Desde %1$d</string>
+    <string name="filters_year_title">Desde el año</string>
+    <string name="filters_year_explain">Solo títulos de este año en adelante: escribe un año (como 2000), o déjalo vacío para volver a la antigüedad de arriba. A diferencia de la antigüedad, no se mueve: una serie cuenta desde su primer episodio, así que una serie de 1963 que sigue emitiéndose no es \"desde 2000\".</string>
+    <string name="filters_year_invalid">\"%1$s\" no es un año</string>
 </resources>
