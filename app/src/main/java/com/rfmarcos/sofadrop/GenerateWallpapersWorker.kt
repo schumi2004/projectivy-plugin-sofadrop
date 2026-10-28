@@ -21,6 +21,9 @@ import java.util.concurrent.TimeUnit
 /** Downloads TMDB data, renders the wallpapers and publishes them to Projectivy. */
 class GenerateWallpapersWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
 
+    /** Draw the screensaver's copies in this generation (see [Settings.screensaverDiffers]). */
+    private val screensaverCopies by lazy { Settings.screensaverDiffers && SofascreenService.isChosen(applicationContext) }
+
     override fun doWork(): Result {
         Settings.init(applicationContext)
         Updater.check()
@@ -109,11 +112,15 @@ class GenerateWallpapersWorker(context: Context, params: WorkerParameters) : Wor
     private fun store(factory: WallpaperFactory, plan: ListPlan, ref: TitleRef, generation: File): StoredWallpaper? =
         try {
             factory.build(ref, plan)?.let { info ->
-                val bitmap = factory.render(info)
                 val name = "${info.type.path}-${info.id}.jpg"
-                FileOutputStream(File(generation, name)).use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
-                bitmap.recycle()
-                StoredWallpaper(name, info.title, info.type.path, info.id, plan.source.key)
+                // The screensaver's copy, when it looks different and Sofascreen is the screensaver
+                val screensaverName = "${info.type.path}-${info.id}-screensaver.jpg".takeIf { screensaverCopies }
+                factory.render(info, screensaverName != null) { copy, bitmap ->
+                    val file = File(generation, if (copy) screensaverName!! else name)
+                    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+                    bitmap.recycle()
+                }
+                StoredWallpaper(name, info.title, info.type.path, info.id, plan.source.key, screensaverName.orEmpty())
             }
         } catch (e: TmdbException) {
             throw e
