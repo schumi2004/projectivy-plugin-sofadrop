@@ -38,7 +38,7 @@ data class WallpaperInfo(
 )
 
 /** Why a title of a list is not used. */
-enum class Exclusion { LOCAL_MARKET, TOO_OLD, ADULT, AGE_RATING, GENRE, LOW_RATING, NO_LOGO, NO_SYNOPSIS, WATCHED, NO_IMAGE, DUPLICATE }
+enum class Exclusion { BLOCKED, LOCAL_MARKET, TOO_OLD, ADULT, AGE_RATING, GENRE, LOW_RATING, NO_LOGO, NO_SYNOPSIS, WATCHED, NO_IMAGE, DUPLICATE }
 
 /** A title of a list and, when it is filtered out, the reason. */
 data class Candidate(val ref: TitleRef, val exclusion: Exclusion? = null)
@@ -92,11 +92,12 @@ class TmdbCatalog(
                 else list.toLongOrNull()?.let { mdbList?.titles(it, count, client) }.orEmpty()
             }
         }.distinct()
+        val blocked = Settings.blockedTitles
         val check = cutoff != null || filters.globalHits || Settings.excludeAdult || Settings.maxRatingAge > 0 ||
-            !filters.genres.isOff || filters.minRating > 0 || Settings.requireLogo || Settings.requireSynopsis
+            !filters.genres.isOff || filters.minRating > 0 || Settings.requireLogo || Settings.requireSynopsis || blocked.isNotEmpty()
         // Each title is checked once, also when the list is read again further
         val checked = ConcurrentHashMap<TitleRef, Candidate>()
-        val filter = if (check) { ref: TitleRef -> checked.getOrPut(ref) { Candidate(ref, exclusion(ref, cutoff, filters)) }.exclusion } else null
+        val filter = if (check) { ref: TitleRef -> checked.getOrPut(ref) { Candidate(ref, exclusion(ref, cutoff, filters, blocked)) }.exclusion } else null
         var fetch = fetchCount(pool, shuffle, strict = check || runExclusion != null)
         var refs = load(fetch)
         if (shuffle) refs = refs.shuffled()
@@ -190,7 +191,9 @@ class TmdbCatalog(
 
     // --- Filters (from the TMDB details of each title) ---
 
-    private fun exclusion(ref: TitleRef, cutoff: String?, filters: FilterValues): Exclusion? {
+    private fun exclusion(ref: TitleRef, cutoff: String?, filters: FilterValues, blocked: Set<TitleRef>): Exclusion? {
+        // First, and without its TMDB details
+        if (ref in blocked) return Exclusion.BLOCKED
         val item = details(ref) ?: return null
         return when {
             filters.globalHits && isLocalMarket(item) -> Exclusion.LOCAL_MARKET
