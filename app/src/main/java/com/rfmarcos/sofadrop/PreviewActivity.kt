@@ -14,10 +14,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import java.util.concurrent.Executors
 
 /**
  * Full-screen view of the generated wallpapers: ◀ ▶ browse, OK shows one in the settings preview,
- * and the info cluster fades out when idle so the wallpaper can be seen whole.
+ * ▲ marks its title watched on the watch history's tracker (pressed twice, see [toggleWatched]), and
+ * the info cluster fades out when idle so the wallpaper can be seen whole.
  */
 class PreviewActivity : AppCompatActivity() {
 
@@ -29,6 +31,16 @@ class PreviewActivity : AppCompatActivity() {
     private var position = 0
     private val handler = Handler(Looper.getMainLooper())
     private val hideOverlay = Runnable { overlay.animate().alpha(0f).setDuration(400).start(); updatePinBadge() }
+
+    // Watch history: what the tracker says, what was marked here (to undo it), and a pending confirmation
+    private val watchHistory by lazy { WatchHistory(this) }
+    private val worker = Executors.newSingleThreadExecutor()
+    private val watchStatuses = mutableMapOf<TitleRef, WatchStatus?>()
+    private val marked = mutableMapOf<TitleRef, Pair<String, WatchStatus?>>()
+    private var confirming: TitleRef? = null
+    private var confirmUntil = 0L
+    private var busy = false
+    private var historyChanged = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,7 +74,6 @@ class PreviewActivity : AppCompatActivity() {
     private fun show() {
         val title = findViewById<TextView>(R.id.viewer_title)
         val subtitle = findViewById<TextView>(R.id.viewer_subtitle)
-        val chips = findViewById<LinearLayout>(R.id.viewer_chips)
         if (wallpapers.isEmpty()) {
             title.setText(R.string.preview_empty)
             return
@@ -76,16 +87,132 @@ class PreviewActivity : AppCompatActivity() {
         while (options.outWidth / (sample * 2) >= metrics.widthPixels) sample *= 2
         image.setImageBitmap(BitmapFactory.decodeFile(file?.path, BitmapFactory.Options().apply { inSampleSize = sample }))
 
-        val pinned = pinOf(wallpaper) == Settings.previewPin
-        findViewById<View>(R.id.viewer_pinned).visibility = if (pinned) View.VISIBLE else View.GONE
         title.text = wallpaper.title
         val source = Sources.available().firstOrNull { it.key == wallpaper.source }?.let { Sources.label(this, it) }
         subtitle.text = listOfNotNull(getString(R.string.viewer_position, position + 1, wallpapers.size), source).joinToString("  ·  ")
+        refreshInfo()
+        showOverlay()
+    }
+
+    /** Badges and key hints of the wallpaper shown, which follow pinning and the watch status. */
+    private fun refreshInfo() {
+        if (wallpapers.isEmpty()) return
+        val wallpaper = wallpapers[position]
+        val pinned = pinOf(wallpaper) == Settings.previewPin
+        findViewById<View>(R.id.viewer_pinned).visibility = if (pinned) View.VISIBLE else View.GONE
+        val chips = findViewById<LinearLayout>(R.id.viewer_chips)
         chips.removeAllViews()
         chips.addView(chip("◀ ▶", getString(R.string.viewer_browse)))
         chips.addView(chip("OK", getString(if (pinned && !picking) R.string.viewer_unpin else R.string.viewer_use)))
-        showOverlay()
+
+        val ref = refOf(wallpaper)
+        val watched = findViewById<TextView>(R.id.viewer_watched)
+        if (ref == null || watchHistory.tracker == null || picking) {
+            watched.visibility = View.GONE
+            return
+        }
+        if (ref !in watchStatuses) {
+            watched.visibility = View.GONE
+            loadStatus(ref)
+            return
+        }
+        val status = watchStatuses[ref]
+        watched.visibility = if (status == null) View.GONE else View.VISIBLE
+        watched.text = when (status) {
+            is WatchStatus.InProgress -> getString(R.string.viewer_watching, status.completed, status.aired)
+            else -> getString(R.string.viewer_watched)
+        }
+        val hint = when {
+            ref in marked -> R.string.viewer_watch_undo
+            status == WatchStatus.Watched -> null // watched before: nothing to do here
+            confirming == ref && System.currentTimeMillis() < confirmUntil -> R.string.viewer_watch_confirm
+            else -> R.string.viewer_watch_mark
+        }
+        if (hint != null) chips.addView(chip("▲", getString(hint)))
     }
+
+    /** Ask the tracker about [ref] in the background, then show it if it is still on screen. */
+    private fun loadStatus(ref: TitleRef) {
+        worker.execute {
+            val status = runCatching { watchHistory.status(ref) }.getOrNull()
+            handler.post {
+                if (isDestroyed) return@post
+                watchStatuses[ref] = status
+                if (wallpapers.getOrNull(position)?.let(::refOf) == ref) refreshInfo()
+            }
+        }
+    }
+
+    /**
+     * ▲ marks the title watched on the tracker after a second press (for a show: all its episodes), or
+     * takes back what was marked here. Titles already watched before are left alone.
+     */
+    private fun toggleWatched() {
+        val wallpaper = wallpapers[position]
+        val ref = refOf(wallpaper) ?: return
+        if (watchHistory.tracker == null || picking || busy || ref !in watchStatuses) return
+        val name = watchHistory.trackerName
+        marked[ref]?.let { (watchedAt, before) ->
+            if (!watchHistory.canUndo(before)) {
+                toast(getString(R.string.watch_undo_unavailable, name))
+                return
+            }
+            inBackground({ watchHistory.undo(ref, watchedAt) }) { result ->
+                if (result.getOrNull() == true) {
+                    marked -= ref
+                    watchStatuses[ref] = before
+                    historyChanged = true
+                    toast(getString(R.string.watch_unmarked, name))
+                } else {
+                    toast(getString(R.string.watch_failed, name, result.exceptionOrNull()?.message.orEmpty()))
+                }
+            }
+            return
+        }
+        val before = watchStatuses[ref]
+        if (before == WatchStatus.Watched) {
+            toast(getString(R.string.watch_already, name))
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (confirming != ref || now > confirmUntil) {
+            confirming = ref
+            confirmUntil = now + CONFIRM_MILLIS
+            val message = if (ref.type == MediaType.TV) R.string.watch_confirm_show else R.string.watch_confirm_movie
+            toast(getString(message, wallpaper.title, name))
+            handler.postDelayed({ if (!isDestroyed) refreshInfo() }, CONFIRM_MILLIS + 100)
+            return
+        }
+        confirming = null
+        inBackground({ watchHistory.mark(ref) }) { result ->
+            result.onSuccess { watchedAt ->
+                marked[ref] = watchedAt to before
+                watchStatuses[ref] = WatchStatus.Watched
+                historyChanged = true
+                toast(getString(R.string.watch_marked, name))
+            }.onFailure {
+                toast(getString(R.string.watch_failed, name, it.message.orEmpty()))
+            }
+        }
+    }
+
+    private fun <T> inBackground(task: () -> T, done: (Result<T>) -> Unit) {
+        busy = true
+        worker.execute {
+            val result = runCatching(task)
+            handler.post {
+                busy = false
+                if (isDestroyed) return@post
+                done(result)
+                refreshInfo()
+            }
+        }
+    }
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    private fun refOf(wallpaper: StoredWallpaper): TitleRef? =
+        MediaType.entries.firstOrNull { it.path == wallpaper.type }?.let { TitleRef(it, wallpaper.tmdbId) }
 
     /** A key glyph in a white rounded square followed by what it does, on a translucent pill. */
     private fun chip(key: String, label: String): View {
@@ -138,6 +265,7 @@ class PreviewActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> position = (position - 1 + wallpapers.size) % wallpapers.size
             // While the overlay is hidden, OK only brings it back: nothing gets pinned by accident
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> if (!overlayHidden) togglePin()
+            KeyEvent.KEYCODE_DPAD_UP -> if (!overlayHidden) toggleWatched()
             else -> return super.onKeyDown(keyCode, event)
         }
         show()
@@ -145,11 +273,15 @@ class PreviewActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(hideOverlay)
+        handler.removeCallbacksAndMessages(null)
+        worker.shutdown()
+        // Watched badges and hidden watched titles come from the tracker at each generation
+        if (historyChanged) GenerateWallpapersWorker.runNow(applicationContext)
         super.onDestroy()
     }
 
     companion object {
         const val EXTRA_PICK = "pick"
+        private const val CONFIRM_MILLIS = 6000L
     }
 }

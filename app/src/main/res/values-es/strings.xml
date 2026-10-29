@@ -386,4 +386,16 @@
     <string name="use_in_projectivy_title">Usar en Projectivy</string>
     <string name="use_in_projectivy_desc">Abre los ajustes de Projectivy: Apariencia › Fondo de pantalla › Fondo de pantalla del launcher › 🔌 Sofadrop</string>
     <string name="use_in_projectivy_path">En Projectivy: Apariencia › Fondo de pantalla › Fondo de pantalla del launcher › 🔌 Sofadrop</string>
+    <string name="viewer_watched">VISTA</string>
+    <string name="viewer_watching">VIENDO %1$d/%2$d</string>
+    <string name="viewer_watch_mark">Vista</string>
+    <string name="viewer_watch_confirm">Pulsa otra vez para confirmar</string>
+    <string name="viewer_watch_undo">Deshacer vista</string>
+    <string name="watch_confirm_movie">Pulsa ▲ otra vez para marcar %1$s como vista en %2$s</string>
+    <string name="watch_confirm_show">Pulsa ▲ otra vez para marcar todos los episodios de %1$s como vistos en %2$s</string>
+    <string name="watch_marked">Marcada como vista en %1$s · se actualiza en los próximos fondos</string>
+    <string name="watch_unmarked">Ya no está marcada como vista en %1$s</string>
+    <string name="watch_already">Ya vista en %1$s</string>
+    <string name="watch_undo_unavailable">No se puede deshacer aquí: %1$s también borraría tu progreso anterior de esta serie</string>
+    <string name="watch_failed">No se pudo actualizar %1$s: %2$s</string>
 </resources>

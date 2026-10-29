@@ -4,7 +4,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -166,6 +168,42 @@ class TraktClient(private val clientId: String, private val clientSecret: String
         return (progress.int("completed") ?: 0) to (progress.int("aired") ?: 0)
     }
 
+    // --- Watch history (marking titles from the wallpaper viewer) ---
+
+    /** Add one play of [ref] at [watchedAt] (a show: all its aired episodes); true when Trakt added any. */
+    fun addToHistory(ref: TitleRef, watchedAt: String): Boolean {
+        val added = (authPost("sync/history", historyBody(ref, watchedAt)) as? JsonObject)?.obj("added")
+        return (added?.int("movies") ?: 0) + (added?.int("episodes") ?: 0) > 0
+    }
+
+    /** Remove only the plays [addToHistory] added at [watchedAt]: earlier plays of the title stay. */
+    fun removeFromHistory(ref: TitleRef, watchedAt: String): Boolean {
+        val type = if (ref.type == MediaType.MOVIE) "movie" else "show"
+        val found = (get("search/tmdb/${ref.tmdbId}?type=$type", auth = false) as? JsonArray)?.firstOrNull() as? JsonObject
+        val traktId = found?.obj(type)?.obj("ids")?.int("trakt") ?: return false
+        val ids = mutableListOf<Long>()
+        var page = 1
+        while (page <= MAX_HISTORY_PAGES) {
+            // Newest first: stop at the first page that reaches plays older than the marked one
+            val items = (get("sync/history/${type}s/$traktId?page=$page&limit=$HISTORY_PAGE", auth = true) as? JsonArray).orEmpty()
+                .filterIsInstance<JsonObject>()
+            items.filter { it.str("watched_at") == watchedAt }.mapNotNullTo(ids) { (it["id"] as? JsonPrimitive)?.longOrNull }
+            if (items.size < HISTORY_PAGE || items.any { it.str("watched_at").orEmpty() < watchedAt }) break
+            page++
+        }
+        if (ids.isEmpty()) return false
+        val deleted = (authPost("sync/history/remove", buildJsonObject { put("ids", JsonArray(ids.map { JsonPrimitive(it) })) }) as? JsonObject)
+            ?.obj("deleted")
+        return (deleted?.int("movies") ?: 0) + (deleted?.int("episodes") ?: 0) > 0
+    }
+
+    private fun historyBody(ref: TitleRef, watchedAt: String) = buildJsonObject {
+        put(if (ref.type == MediaType.MOVIE) "movies" else "shows", JsonArray(listOf(buildJsonObject {
+            put("watched_at", watchedAt)
+            put("ids", buildJsonObject { put("tmdb", ref.tmdbId) })
+        })))
+    }
+
     // --- HTTP ---
 
     private fun request(path: String, auth: Boolean) = Request.Builder()
@@ -190,6 +228,19 @@ class TraktClient(private val clientId: String, private val clientSecret: String
         }
     }
 
+    /** POST as the connected account (watch history changes). */
+    private fun authPost(path: String, body: JsonObject): JsonElement? {
+        refreshIfNeeded()
+        http.newCall(request(path, auth = true).post(body.toString().toRequestBody(jsonType)).build()).execute().use { response ->
+            if (response.code == 401) {
+                Settings.clearTraktSession()
+                throw IOException("Trakt: account not connected")
+            }
+            if (!response.isSuccessful) throw IOException("Trakt HTTP ${response.code} for $path")
+            return response.body?.string()?.takeIf { it.isNotBlank() }?.let { json.parseToJsonElement(it) }
+        }
+    }
+
     private fun post(path: String, body: JsonObject): Pair<Int, JsonElement?> {
         val call = request(path, auth = false).post(body.toString().toRequestBody(jsonType)).build()
         http.newCall(call).execute().use { response ->
@@ -202,6 +253,8 @@ class TraktClient(private val clientId: String, private val clientSecret: String
     companion object {
         private const val API_URL = "https://api.trakt.tv/"
         private const val USER_AGENT = "Sofadrop/1.0"
+        private const val HISTORY_PAGE = 100
+        private const val MAX_HISTORY_PAGES = 20
         private const val PKCE_BASE64 = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
         // Never opened (device flow), but the token refresh must send the URI registered for the Trakt app
         const val REDIRECT_URI = "https://github.com/rfmarcos/projectivy-plugin-sofadrop"
