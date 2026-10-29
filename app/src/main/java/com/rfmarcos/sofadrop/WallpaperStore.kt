@@ -1,6 +1,7 @@
 package com.rfmarcos.sofadrop
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -72,6 +73,18 @@ class WallpaperStore(private val context: Context) {
 
     fun fileOf(wallpaper: StoredWallpaper): File? = currentDir()?.let { File(it, wallpaper.file) }
 
+    /**
+     * Draw over the image [name] in every set that has it: the current one and the one Projectivy was
+     * given, which keeps its URIs. Written next to it and renamed, so a reader never sees half a file.
+     */
+    fun replace(name: String, bitmap: Bitmap) {
+        root.listFiles()?.filter { it.isDirectory }?.map { File(it, name) }?.filter { it.isFile }?.forEach { target ->
+            val tmp = File(target.parentFile, "$name.tmp")
+            tmp.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+            tmp.renameTo(target)
+        }
+    }
+
     /** content:// URI of a current wallpaper, served by [WallpaperContentProvider]. */
     fun uriOf(wallpaper: StoredWallpaper): Uri? {
         val dir = currentDir() ?: return null
@@ -81,6 +94,7 @@ class WallpaperStore(private val context: Context) {
 
     companion object {
         private const val INDEX = "index.json"
+        private const val JPEG_QUALITY = 90
         const val DIR = "wallpapers"
     }
 }

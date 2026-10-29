@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -40,7 +41,7 @@ class PreviewActivity : AppCompatActivity() {
     private var confirming: TitleRef? = null
     private var confirmUntil = 0L
     private var busy = false
-    private var historyChanged = false
+    @Volatile private var redrawn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,11 +158,10 @@ class PreviewActivity : AppCompatActivity() {
                 toast(getString(R.string.watch_undo_unavailable, name))
                 return
             }
-            inBackground({ watchHistory.undo(ref, watchedAt) }) { result ->
+            inBackground({ watchHistory.undo(ref, watchedAt).also { if (it) redraw(wallpaper, before) } }) { result ->
                 if (result.getOrNull() == true) {
                     marked -= ref
                     watchStatuses[ref] = before
-                    historyChanged = true
                     toast(getString(R.string.watch_unmarked, name))
                 } else {
                     toast(getString(R.string.watch_failed, name, result.exceptionOrNull()?.message.orEmpty()))
@@ -184,16 +184,34 @@ class PreviewActivity : AppCompatActivity() {
             return
         }
         confirming = null
-        inBackground({ watchHistory.mark(ref) }) { result ->
+        inBackground({ watchHistory.mark(ref).also { redraw(wallpaper, WatchStatus.Watched) } }) { result ->
             result.onSuccess { watchedAt ->
                 marked[ref] = watchedAt to before
                 watchStatuses[ref] = WatchStatus.Watched
-                historyChanged = true
                 toast(getString(R.string.watch_marked, name))
             }.onFailure {
                 toast(getString(R.string.watch_failed, name, it.message.orEmpty()))
             }
         }
+    }
+
+    /**
+     * Draw [wallpaper] again with its new watch status, over its image in the current set, so the badge
+     * shows without a new set (blocking: from [inBackground]). Only lists that mark watched titles
+     * draw a badge; hidden watched titles go at the next update, like any other filter.
+     */
+    private fun redraw(wallpaper: StoredWallpaper, status: WatchStatus?) {
+        val source = Sources.available().firstOrNull { it.key == wallpaper.source }
+        val mode = source?.let { Settings.filtersFor(it).watched } ?: Settings.watchedMode
+        if (mode != Settings.WATCHED_MARK || !Settings.drawsDetails || !Settings.showsInHeader(Settings.HEADER_WATCHED)) return
+        runCatching {
+            val factory = WallpaperFactory(this, Settings.outputWidth)
+            val info = factory.build(refOf(wallpaper) ?: return, null, source) ?: return
+            val bitmap = factory.render(info.copy(watchStatus = status))
+            store.replace(wallpaper.file, bitmap)
+            bitmap.recycle()
+            redrawn = true
+        }.onFailure { Log.w(TAG, "Could not redraw ${wallpaper.file}", it) }
     }
 
     private fun <T> inBackground(task: () -> T, done: (Result<T>) -> Unit) {
@@ -204,7 +222,13 @@ class PreviewActivity : AppCompatActivity() {
                 busy = false
                 if (isDestroyed) return@post
                 done(result)
-                refreshInfo()
+                // The image on screen was drawn again: show the new one
+                if (redrawn) {
+                    redrawn = false
+                    show()
+                } else {
+                    refreshInfo()
+                }
             }
         }
     }
@@ -275,13 +299,12 @@ class PreviewActivity : AppCompatActivity() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         worker.shutdown()
-        // Watched badges and hidden watched titles come from the tracker at each generation
-        if (historyChanged) GenerateWallpapersWorker.runNow(applicationContext)
         super.onDestroy()
     }
 
     companion object {
         const val EXTRA_PICK = "pick"
+        private const val TAG = "PreviewActivity"
         private const val CONFIRM_MILLIS = 6000L
     }
 }

@@ -338,7 +338,7 @@
     <string name="viewer_watch_undo">Undo watched</string>
     <string name="watch_confirm_movie">Press ▲ again to mark %1$s as watched on %2$s</string>
     <string name="watch_confirm_show">Press ▲ again to mark every episode of %1$s as watched on %2$s</string>
-    <string name="watch_marked">Marked as watched on %1$s · updated in the next wallpapers</string>
+    <string name="watch_marked">Marked as watched on %1$s</string>
     <string name="watch_unmarked">No longer marked as watched on %1$s</string>
     <string name="watch_already">Already watched on %1$s</string>
     <string name="watch_undo_unavailable">Can\'t be undone here: %1$s would also drop your earlier progress of this show</string>
