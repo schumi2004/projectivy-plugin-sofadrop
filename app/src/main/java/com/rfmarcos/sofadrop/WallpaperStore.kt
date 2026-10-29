@@ -28,6 +28,7 @@ class WallpaperStore(private val context: Context) {
     private val root = File(context.filesDir, DIR)
     private val currentFile = File(root, "current.txt")
     private val servedFile = File(root, "served.txt")
+    private val rotationFile = File(root, "rotation.txt")
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     fun newGeneration(): File =
@@ -53,6 +54,19 @@ class WallpaperStore(private val context: Context) {
     /** Remember that Projectivy now has the current set's URIs (see [publish]). */
     fun markServed() {
         currentDir()?.let { servedFile.writeText(it.name) }
+    }
+
+    /**
+     * The part of [wallpapers] to give Projectivy, which keeps no more than [PROJECTIVY_LIMIT]: a larger
+     * set is served in turns, each call carrying on where the previous one for the same set stopped.
+     */
+    fun nextTurn(wallpapers: List<StoredWallpaper>): List<StoredWallpaper> {
+        if (wallpapers.size <= PROJECTIVY_LIMIT) return wallpapers
+        val generation = currentDir()?.name ?: return wallpapers.take(PROJECTIVY_LIMIT)
+        val saved = rotationFile.takeIf { it.exists() }?.readText()?.trim()?.split(" ")
+        val start = saved?.takeIf { it.size == 2 && it[0] == generation }?.get(1)?.toIntOrNull() ?: 0
+        rotationFile.writeText("$generation ${(start + PROJECTIVY_LIMIT) % wallpapers.size}")
+        return turn(wallpapers, start, PROJECTIVY_LIMIT)
     }
 
     fun discard(generation: File) {
@@ -89,5 +103,13 @@ class WallpaperStore(private val context: Context) {
     companion object {
         private const val INDEX = "index.json"
         const val DIR = "wallpapers"
+
+        /** The most wallpapers Projectivy keeps from one call; the rest of a list is dropped. */
+        const val PROJECTIVY_LIMIT = 100
+
+        /** [size] wallpapers of [wallpapers] from [start] on, wrapping round to the first. */
+        fun <T> turn(wallpapers: List<T>, start: Int, size: Int): List<T> =
+            if (wallpapers.isEmpty()) emptyList()
+            else List(minOf(size, wallpapers.size)) { wallpapers[(start + it) % wallpapers.size] }
     }
 }

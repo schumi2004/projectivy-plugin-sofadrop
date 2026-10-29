@@ -37,9 +37,11 @@ class WallpaperProviderService : Service() {
             }
             GenerateWallpapersWorker.schedule(this@WallpaperProviderService)
 
-            Log.i(TAG, "getWallpapers: ${current.size} wallpapers, stale=$stale, pendingChanges=${Settings.hasPendingChanges}")
+            // Projectivy drops all but the first 100: a larger set is served in turns
+            val turn = store.nextTurn(current)
+            Log.i(TAG, "getWallpapers: ${current.size} wallpapers, serving ${turn.size}, stale=$stale, pendingChanges=${Settings.hasPendingChanges}")
             store.markServed()
-            return (if (Settings.mixLists) current.shuffled() else current).mapNotNull { wallpaper ->
+            return (if (Settings.mixLists) turn.shuffled() else turn).mapNotNull { wallpaper ->
                 val uri = store.uriOf(wallpaper) ?: return@mapNotNull null
                 Wallpaper(
                     uri = uri.toString(),
