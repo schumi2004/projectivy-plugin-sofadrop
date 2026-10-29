@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dutch: marking a title watched from View wallpapers (pr/viewer-watched) -->
+<resources>
+    <string name="viewer_watched">BEKEKEN</string>
+    <string name="viewer_watching">BEZIG %1$d/%2$d</string>
+    <string name="viewer_watch_mark">Bekeken</string>
+    <string name="viewer_watch_confirm">Nogmaals om te bevestigen</string>
+    <string name="viewer_watch_undo">Bekeken ongedaan maken</string>
+    <string name="watch_confirm_movie">Druk nogmaals op ▲ om %1$s op bekeken te zetten in %2$s</string>
+    <string name="watch_confirm_show">Druk nogmaals op ▲ om alle afleveringen van %1$s op bekeken te zetten in %2$s</string>
+    <string name="watch_marked">Op bekeken gezet in %1$s · zichtbaar in de volgende wallpapers</string>
+    <string name="watch_unmarked">Niet meer op bekeken in %1$s</string>
+    <string name="watch_already">Al bekeken in %1$s</string>
+    <string name="watch_undo_unavailable">Kan hier niet ongedaan worden: %1$s zou ook je eerdere voortgang van deze serie wissen</string>
+    <string name="watch_failed">Kon %1$s niet bijwerken: %2$s</string>
+</resources>

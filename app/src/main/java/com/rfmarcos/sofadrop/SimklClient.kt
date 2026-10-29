@@ -4,10 +4,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -78,6 +82,25 @@ class SimklClient(private val clientId: String, private val tmdb: TmdbClient? = 
         return watching + completed
     }
 
+    // --- Watch history (marking titles from the wallpaper viewer) ---
+
+    /** Mark [ref] watched at [watchedAt] (a show: completed); true when Simkl found the title. */
+    fun addToHistory(ref: TitleRef, watchedAt: String): Boolean = allFound(send("sync/history", historyBody(ref, watchedAt)))
+
+    /** Simkl keeps one state per title, so this takes the title out of the watched history altogether. */
+    fun removeFromHistory(ref: TitleRef): Boolean = allFound(send("sync/history/remove", historyBody(ref, null)))
+
+    private fun historyBody(ref: TitleRef, watchedAt: String?) = buildJsonObject {
+        put(if (ref.type == MediaType.MOVIE) "movies" else "shows", JsonArray(listOf(buildJsonObject {
+            if (watchedAt != null) put("watched_at", watchedAt)
+            put("ids", buildJsonObject { put("tmdb", ref.tmdbId) })
+        })))
+    }
+
+    /** Simkl answers 201 with the titles it couldn't match under "not_found". */
+    private fun allFound(body: JsonElement?): Boolean =
+        (body as? JsonObject)?.obj("not_found")?.values.orEmpty().sumOf { (it as? JsonArray)?.size ?: 0 } == 0
+
     /** Account name, shown in the settings. */
     fun username(): String? = (get("users/settings") as? JsonObject)?.obj("user")?.str("name")
 
@@ -99,6 +122,28 @@ class SimklClient(private val clientId: String, private val tmdb: TmdbClient? = 
             }
             if (!response.isSuccessful) throw IOException("Simkl HTTP ${response.code} for $path")
             return response.body?.string()?.let { json.parseToJsonElement(it) }
+        }
+    }
+
+    /** JSON POST as the connected account (watch history changes). */
+    private fun send(path: String, body: JsonObject): JsonElement? {
+        refreshIfNeeded()
+        val url = "$API_URL$path".toHttpUrl().newBuilder()
+            .addQueryParameter("client_id", clientId)
+            .addQueryParameter("app-name", APP_NAME)
+            .addQueryParameter("app-version", BuildConfig.VERSION_NAME)
+            .build()
+        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT)
+            .header("simkl-api-key", clientId)
+            .header("Authorization", "Bearer ${Settings.simklAccessToken}")
+            .post(body.toString().toRequestBody("application/json".toMediaType())).build()
+        http.newCall(request).execute().use { response ->
+            if (response.code == 401) {
+                Settings.clearSimklSession()
+                throw IOException("Simkl: account not connected")
+            }
+            if (!response.isSuccessful) throw IOException("Simkl HTTP ${response.code} for $path")
+            return response.body?.string()?.takeIf { it.isNotBlank() }?.let { json.parseToJsonElement(it) }
         }
     }
 
